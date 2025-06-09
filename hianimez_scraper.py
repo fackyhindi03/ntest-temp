@@ -1,6 +1,7 @@
 # hianimez_scraper.py
 
 import os
+import re
 import requests
 import logging
 from typing import Tuple, Optional
