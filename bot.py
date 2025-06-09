@@ -106,7 +106,10 @@ def search_command(update: Update, context: CallbackContext):
 @restricted
 def anime_callback(update: Update, context: CallbackContext):
     query = update.callback_query
-    query.answer()
+    try:
+        query.answer()
+    except BadRequest as e:
+        logger.warning("Could not answer callback query: %s", e)
     chat_id = query.message.chat.id
 
     idx = int(query.data.split(":",1)[1])
@@ -127,7 +130,10 @@ def anime_callback(update: Update, context: CallbackContext):
 @restricted
 def episode_callback(update: Update, context: CallbackContext):
     query = update.callback_query
-    query.answer()
+    try:
+        query.answer()
+    except BadRequest as e:
+        logger.warning("Could not answer callback query: %s", e) 
     chat_id = query.message.chat.id
 
     idx = int(query.data.split(":",1)[1])
