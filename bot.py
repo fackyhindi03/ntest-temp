@@ -135,9 +135,6 @@ def episode_callback(update: Update, context: CallbackContext):
     # ep_id still holds the strange slug from the API
     slug = ep_id            # the entire slug string
     hls, sub = extract_episode_stream_and_subtitle(slug, ep_num)
-
-    # fetch stream + subtitle
-    hls, sub = extract_episode_stream_and_subtitle(ep_id)
     if not hls:
         return query.message.reply_text("❌ Couldn't find a video stream for that episode.")
 
