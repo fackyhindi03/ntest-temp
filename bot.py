@@ -132,35 +132,37 @@ def episode_callback(update: Update, context: CallbackContext):
     query = update.callback_query
     try:
         query.answer()
-    except BadRequest as e:
-        logger.warning("Could not answer callback query: %s", e) 
+    except:
+        pass
     chat_id = query.message.chat.id
 
     idx = int(query.data.split(":",1)[1])
-    ep_num, ep_id = episode_cache[chat_id][idx]    
-    # ep_id still holds the strange slug from the API
-    slug = ep_id            # the entire slug string
-    try:
-        hls, sub = extract_episode_stream_and_subtitle(slug, ep_num)
-    except Exception as e:
-        logger.error("Scraper error for %s ep%s: %s", slug, ep_num, e)
-        return query.message.reply_text(
-            "⚠️ Sorry, I couldn’t fetch that episode. It may not exist or the page structure changed."
-        )
+    ep_num, ep_id = episode_cache[chat_id][idx]  # ep_id looks like "slug?ep=1"
+
+    # 1) extract via regex
+    hls, sub = extract_episode_stream_and_subtitle(ep_id)
+
+    # 2) guard
     if not hls:
-        return query.message.reply_text("❌ Couldn't find a video stream for that episode.")
+        return query.message.reply_text(
+            "❌ Couldn't find a video stream for that episode."
+        )
 
-    # send HLS
+    # 3) send the HLS link
     safe = escape_markdown(hls, version=2)
-    context.bot.send_message(chat_id=chat_id, text=f"🔗 `{safe}`", parse_mode="MarkdownV2")
+    context.bot.send_message(
+        chat_id=chat_id,
+        text=f"🔗 `{safe}`",
+        parse_mode="MarkdownV2"
+    )
 
-    # send subtitle if available
+    # 4) send subtitle if found
     if sub:
         local_vtt = download_and_rename_subtitle(sub, ep_num)
         with open(local_vtt, "rb") as f:
-            context.bot.send_document(chat_id, document=InputFile(f))
+            context.bot.send_document(chat_id=chat_id, document=InputFile(f))
     else:
-        context.bot.send_message(chat_id, text="⚠️ Subtitle not available.")
+        context.bot.send_message(chat_id=chat_id, text="⚠️ Subtitle not available.")
 
 
 dispatcher.add_handler(CommandHandler("start", start))
