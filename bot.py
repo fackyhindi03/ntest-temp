@@ -131,8 +131,10 @@ def episode_callback(update: Update, context: CallbackContext):
     chat_id = query.message.chat.id
 
     idx = int(query.data.split(":",1)[1])
-    ep_num, ep_id = episode_cache[chat_id][idx]
-    title = context.user_data.get("anime_title", "Unknown")
+    ep_num, ep_id = episode_cache[chat_id][idx]    
+    # ep_id still holds the strange slug from the API
+    slug = ep_id            # the entire slug string
+    hls, sub = extract_episode_stream_and_subtitle(slug, ep_num)
 
     # fetch stream + subtitle
     hls, sub = extract_episode_stream_and_subtitle(ep_id)
