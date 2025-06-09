@@ -60,7 +60,12 @@ def get_episodes_list(slug: str):
 
 def extract_episode_stream_and_subtitle(slug: str, ep_num: str):
     """
-    Scrape hianime.to/watch/{slug}?ep={ep_num} for the HLS URL and English VTT.
+    Scrape hianime.to/watch/{slug}?ep={ep_num} for the HLS URL and English subtitles.
+    Tries:
+      1) window.__NUXT__ inline JSON
+      2) <script id="__NUXT_DATA__"> JSON blob
+      3) <script id="__NEXT_DATA__"> JSON blob
+      4) FALLBACK: regex scan for .m3u8 and .vtt/.srt in HTML
     """
     page_url = f"https://hianime.to/watch/{slug}?ep={ep_num}"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -68,51 +73,49 @@ def extract_episode_stream_and_subtitle(slug: str, ep_num: str):
     resp.raise_for_status()
     html = resp.text
 
-    # 1) Try window.__NUXT__ inline JSON
+    # 1) Inline Nuxt state
     m = re.search(r"window\.__NUXT__\s*=\s*(\{.*?\});", html, re.DOTALL)
+    raw = None
     if m:
         raw = m.group(1)
-
     else:
-        # 2) Try the Nuxt <script id="__NUXT_DATA__"> JSON blob
+        # 2) Nuxt data tag
         m = re.search(
-            r'<script[^>]+id="__NUXT_DATA__"[^>]*>\s*({.*?})\s*</script>',
+            r'<script[^>]+id="__NUXT_DATA__"[^>]*>\s*(\{.*?\})\s*</script>',
             html, re.DOTALL
         )
         if m:
             raw = m.group(1)
         else:
-            # 3) Finally, try the Next.js <script id="__NEXT_DATA__"> blob
+            # 3) Next.js data tag
             m = re.search(
-                r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*({.*?})\s*</script>',
+                r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*(\{.*?\})\s*</script>',
                 html, re.DOTALL
             )
-            if not m:
-                raise RuntimeError("Could not find embedded JSON on page")
-            raw = m.group(1)
+            if m:
+                raw = m.group(1)
 
-    # Parse the JSON we found:
-    payload = json.loads(raw)
+    if raw:
+        data = json.loads(raw).get("data", {})
+        ep_obj = next((e for e in data.get("episodes", [])
+                       if str(e.get("number")) == ep_num), None)
+        if ep_obj:
+            # pull JSON sources
+            hls = next((s["url"] for s in ep_obj.get("sources", [])
+                        if s.get("type") == "hls" and s.get("url")), None)
+            # pull JSON subtitles
+            subtitle = None
+            for tr in ep_obj.get("tracks", []):
+                lang = tr.get("lang","") or tr.get("label","")
+                if lang.lower().startswith("english") and tr.get("url"):
+                    subtitle = tr["url"]
+                    break
+            return hls, subtitle
 
-    # 3) Locate the current episode in payload
-    episodes = payload.get("data", {}).get("episodes", [])
-    ep_obj = next((e for e in episodes if str(e.get("number")) == ep_num), None)
-    if not ep_obj:
-        raise RuntimeError(f"Episode {ep_num} not found in page payload")
+    # 4) FALLBACK: regex scan for any .m3u8 and subtitle links in the HTML
+    hls_match = re.search(r"https?://[^'\"\s]+\.m3u8[^'\"\s]*", html)
+    sub_match = re.search(r"https?://[^'\"\s]+\.(?:vtt|srt)[^'\"\s]*", html)
 
-    # 4) Extract the HLS stream
-    hls_link = next(
-        (src["url"] for src in ep_obj.get("sources", [])
-         if src.get("type") == "hls" and src.get("url")),
-        None
-    )
-
-    # 5) Extract the English subtitle
-    subtitle_url = None
-    for tr in ep_obj.get("tracks", []):
-        lang = tr.get("lang", "") or tr.get("label", "")
-        if lang.lower().startswith("english") and tr.get("url"):
-            subtitle_url = tr["url"]
-            break
-
-    return hls_link, subtitle_url
+    hls = hls_match.group(0) if hls_match else None
+    subtitle = sub_match.group(0) if sub_match else None
+    return hls, subtitle
