@@ -48,65 +48,59 @@ def get_episodes_list(slug: str):
     return out
 
 
-def extract_episode_stream_and_subtitle(episode_id: str) -> Tuple[Optional[str], Optional[str]]:
+def extract_episode_stream_and_subtitle(episode_id: str):
     """
-    1) GET /episode/servers to list all sub/dub/raw servers.
-    2) Try each server (sub first, then raw, then dub) by calling
-       /episode/sources?animeEpisodeId=…&server=… 
-    3) The first non‐empty sources array wins.
-    4) Pick the first HLS URL and the first English track from that.
+    1) GET the watch page for the given episode_id, e.g. "raven-of-the-inner-palace-18168?ep=94361"
+    2) Regex out the full https://niwinn.com/sbar.json?... URL
+    3) Unescape any HTML entities (&amp; → &), then GET it with the correct Referer
+    4) Parse JSON for the .m3u8 and .vtt/.srt links
     """
-    # 1) fetch the list of servers
-    srv_url = f"{ANIWATCH_API_BASE}/episode/servers"
-    r = requests.get(srv_url, params={"animeEpisodeId": episode_id}, timeout=10)
+    page_url = f"https://hianime.pe/watch/{episode_id}"
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": page_url
+    }
+
+    # 1) fetch the episode page
+    r = requests.get(page_url, headers=headers, timeout=10)
     r.raise_for_status()
-    data = r.json().get("data", {})
-    # try sub, then raw, then dub
-    for category in ("sub", "raw", "dub"):
-        servers = data.get(category, [])
-        for s in servers:
-            server_name = s.get("serverName") or s.get("name")
-            if not server_name:
-                continue
+    html = r.text
 
-            # 2) fetch sources from that server
-            src_url = f"{ANIWATCH_API_BASE}/episode/sources"
-            r2 = requests.get(
-                src_url,
-                params={
-                    "animeEpisodeId": episode_id,
-                    "server":         server_name,
-                },
-                timeout=10
-            )
-            if not r2.ok:
-                continue
+    # 2) find the full niwinn URL
+    m = re.search(r'(https://niwinn\.com/sbar\.json\?[^"\']+)', html)
+    if not m:
+        logger.error("Could not find niwinn URL in page HTML")
+        return None, None
 
-            d2 = r2.json().get("data", {})
-            sources  = d2.get("sources", [])
-            tracks   = d2.get("tracks", []) + d2.get("subtitles", [])
+    sbar_url = m.group(1).replace("&amp;", "&")
 
-            if not sources:
-                continue
+    # 3) fetch the niwinn JSON
+    r2 = requests.get(sbar_url, headers=headers, timeout=10)
+    r2.raise_for_status()
+    data = r2.json()
+    logger.debug("niwinn JSON: %s", data)
 
-            # 3) extract the HLS link
-            hls_link = next(
-                (s["url"] for s in sources 
-                 if s.get("type") == "hls" and s.get("url")),
-                None
-            )
+    # 4) locate your video+subtitle entries
+    #    Adjust these keys to match the actual JSON shape you see in your logs!
+    #    Common fields are "video" or "playlist" or "sources"
+    video_list = data.get("video") or data.get("playlist") or data.get("sources") or []
+    if not video_list:
+        logger.error("No video entries in sbar.json response")
+        return None, None
 
-            # 4) extract the English subtitle
-            subtitle = next(
-                (t.get("file") or t.get("url") for t in tracks
-                 if (t.get("label","") or t.get("lang","")).lower().startswith("english")
-                ),
-                None
-            )
+    # pick the first .m3u8
+    hls_link = next(
+        (item.get("file") for item in video_list
+         if item.get("file", "").endswith(".m3u8")),
+        None
+    )
 
-            logger.info("Got stream from server '%s': %s", server_name, hls_link)
-            return hls_link, subtitle
+    # pick the first subtitle track
+    subtitle_url = next(
+        (item.get("subtitle") or item.get("captions") or item.get("file")
+         for item in video_list
+         if (item.get("subtitle","") or "").endswith((".vtt", ".srt"))),
+        None
+    )
 
-    # if we fall through, nothing worked
-    logger.warning("No servers yielded a stream for %s", episode_id)
-    return None, None
+    return hls_link, subtitle_url
