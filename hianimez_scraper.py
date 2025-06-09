@@ -68,19 +68,31 @@ def extract_episode_stream_and_subtitle(slug: str, ep_num: str):
     resp.raise_for_status()
     html = resp.text
 
-    # 1) Try the old inline assignment pattern
-    m = re.search(r"window\.__NUXT__=(\{.*?\});", html)
+    # 1) Try window.__NUXT__ inline JSON
+    m = re.search(r"window\.__NUXT__\s*=\s*(\{.*?\});", html, re.DOTALL)
     if m:
-        payload = json.loads(m.group(1))
+        raw = m.group(1)
+
     else:
-        # 2) Fall back to the <script id="__NUXT_DATA__"> JSON blob
-        m2 = re.search(
-            r'<script\s+id="__NUXT_DATA__"\s+type="application/json">\s*({.*?})\s*</script>',
+        # 2) Try the Nuxt <script id="__NUXT_DATA__"> JSON blob
+        m = re.search(
+            r'<script[^>]+id="__NUXT_DATA__"[^>]*>\s*({.*?})\s*</script>',
             html, re.DOTALL
         )
-        if not m2:
-            raise RuntimeError("Could not find embedded JSON on page")
-        payload = json.loads(m2.group(1))
+        if m:
+            raw = m.group(1)
+        else:
+            # 3) Finally, try the Next.js <script id="__NEXT_DATA__"> blob
+            m = re.search(
+                r'<script[^>]+id="__NEXT_DATA__"[^>]*>\s*({.*?})\s*</script>',
+                html, re.DOTALL
+            )
+            if not m:
+                raise RuntimeError("Could not find embedded JSON on page")
+            raw = m.group(1)
+
+    # Parse the JSON we found:
+    payload = json.loads(raw)
 
     # 3) Locate the current episode in payload
     episodes = payload.get("data", {}).get("episodes", [])
