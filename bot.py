@@ -71,9 +71,9 @@ episode_cache = {}   # chat_id → [ (num, eid), … ]
 @restricted
 def start(update: Update, context: CallbackContext):
     update.message.reply_text(
-        "🌸 *Hianime Downloader* 🌸\n\n"
-        "Use `/search <anime name>` to begin.",
-        parse_mode="MarkdownV2"
+        '🌸 <b>Hianime Downloader</b> 🌸\n\n'
+        'Use <code>/search &lt;anime name&gt;</code> to begin.',
+        parse_mode="HTML"
     )
 
 
