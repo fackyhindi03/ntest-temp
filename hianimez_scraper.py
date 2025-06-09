@@ -98,10 +98,24 @@ def _sniff(response, ignore, setter):
     if url.endswith(".vtt") and not globals().get("sub"):
         setter(None, url)
 
-def extract_episode_stream_and_subtitle(slug: str, ep_num: str):
+def extract_episode_stream_and_subtitle(episode_id: str):
     """
-    Sync wrapper around the async headless‐browser fetch.
-    Uses asyncio.run so we always get a fresh loop.
+    Given episode_id returned by get_episodes_list, e.g. "killer-seven-1516?ep=1",
+    fetches the page https://hianime.to/watch/{episode_id}
+    and uses regex to grab the first .m3u8 URL and first VTT/SRT URL it finds.
     """
-    return asyncio.run(_fetch_with_playwright(slug, ep_num))
+    page_url = f"https://hianime.to/watch/{episode_id}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    resp = requests.get(page_url, headers=headers, timeout=10)
+    resp.raise_for_status()
+    html = resp.text
 
+    # 1) Find HLS playlist URL
+    m3u8_match = re.search(r'''["'](https?://[^"']+?\.m3u8[^"']*)["']''', html)
+    hls_link = m3u8_match.group(1) if m3u8_match else None
+
+    # 2) Find subtitle file (VTT or SRT)
+    sub_match = re.search(r'''["'](https?://[^"']+\.(?:vtt|srt))["']''', html)
+    subtitle_url = sub_match.group(1) if sub_match else None
+
+    return hls_link, subtitle_url
