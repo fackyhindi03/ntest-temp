@@ -98,11 +98,10 @@ def _sniff(response, ignore, setter):
     if url.endswith(".vtt") and not globals().get("sub"):
         setter(None, url)
 
-def extract_episode_stream_and_subtitle(slug: str, ep_num: str) -> Tuple[Optional[str], Optional[str]]:
+def extract_episode_stream_and_subtitle(slug: str, ep_num: str):
     """
-    Public sync wrapper around the async PW fetch.
+    Sync wrapper around the async headless‐browser fetch.
+    Uses asyncio.run so we always get a fresh loop.
     """
-    # clear any leftover
-    globals()["m3u8"] = None
-    globals()["sub"]  = None
-    return asyncio.get_event_loop().run_until_complete(_fetch_with_playwright(slug, ep_num))
+    return asyncio.run(_fetch_with_playwright(slug, ep_num))
+
