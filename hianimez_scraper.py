@@ -1,6 +1,8 @@
 # hianimez_scraper.py
 
 import os
+import re
+import requests
 import asyncio
 from typing import Tuple, Optional
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
