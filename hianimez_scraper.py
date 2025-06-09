@@ -58,41 +58,41 @@ def get_episodes_list(slug: str):
     return episodes
 
 
-def extract_episode_stream_and_subtitle(episode_id: str):
+def extract_episode_stream_and_subtitle(slug: str, ep_num: str):
     """
-    Directly scrape hianime.to to get the .m3u8 stream and English subtitle.
-    episode_id looks like "naruto-1?ep=1".
+    slug:            the anime slug, e.g. "killer-seven-1516-54918"
+    ep_num:          the episode number as string, e.g. "1"
+    
+    Builds the URL https://hianime.to/watch/{slug}?ep={ep_num},
+    scrapes the embedded Nuxt JSON, and returns (m3u8_link, subtitle_url).
     """
-    # 1) Split slug & ep number
-    slug, _, epnum = episode_id.partition("?ep=")
-
-    # 2) Fetch the episode page
-    url = f"https://hianime.to/watch/{slug}-{epnum}"
+    # 1) build the correct page URL
+    page_url = f"https://hianime.to/watch/{slug}?ep={ep_num}"
     headers = {"User-Agent": "Mozilla/5.0"}
-    resp = requests.get(url, headers=headers, timeout=10)
-    resp.raise_for_status()
-    html = resp.text
+    r = requests.get(page_url, headers=headers, timeout=10)
+    r.raise_for_status()
+    html = r.text
 
-    # 3) Extract the embedded Nuxt JSON
+    # 2) extract the Nuxt payload
     m = re.search(r"window\.__NUXT__=(\{.*?\});", html)
     if not m:
-        raise RuntimeError("Embedded JSON payload not found on page")
+        raise RuntimeError("Could not find embedded JSON on page")
     payload = json.loads(m.group(1))
 
-    # 4) Find the right episode object
+    # 3) locate our episode object
     episodes = payload.get("data", {}).get("episodes", [])
-    ep_obj = next((e for e in episodes if str(e.get("number")) == epnum), None)
+    ep_obj = next((e for e in episodes if str(e.get("number")) == ep_num), None)
     if not ep_obj:
-        raise RuntimeError(f"Episode {epnum} not in page payload")
+        raise RuntimeError(f"Episode {ep_num} not in page payload")
 
-    # 5) Pull the HLS stream URL
+    # 4) grab the HLS stream
     hls_link = next(
-        (s.get("url") for s in ep_obj.get("sources", [])
-         if s.get("type") == "hls" and s.get("url")),
+        (src["url"] for src in ep_obj.get("sources", [])
+         if src.get("type") == "hls" and src.get("url")),
         None
     )
 
-    # 6) Pull the English subtitle URL
+    # 5) grab the English subtitle
     subtitle_url = None
     for tr in ep_obj.get("tracks", []):
         lang = tr.get("lang", "") or tr.get("label", "")
