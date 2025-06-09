@@ -113,7 +113,7 @@ def anime_callback(update: Update, context: CallbackContext):
     title, slug = search_cache[chat_id][idx]
     context.user_data["anime_title"] = title
 
-    query.edit_text(f"🔍 Fetching episodes for *{title}*…", parse_mode="MarkdownV2")
+    query.edit_message_text(f"🔍 Fetching episodes for *{title}*…", parse_mode="MarkdownV2")
     episodes = get_episodes_list(slug)
     episode_cache[chat_id] = episodes
 
@@ -121,7 +121,7 @@ def anime_callback(update: Update, context: CallbackContext):
         [InlineKeyboardButton(f"Episode {num}", callback_data=f"episode_idx:{i}")]
         for i, (num, _) in enumerate(episodes)
     ]
-    query.edit_text("Select an episode:", reply_markup=InlineKeyboardMarkup(buttons))
+    query.edit_message_text("Select an episode:", reply_markup=InlineKeyboardMarkup(buttons))
 
 
 @restricted
