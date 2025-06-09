@@ -134,7 +134,13 @@ def episode_callback(update: Update, context: CallbackContext):
     ep_num, ep_id = episode_cache[chat_id][idx]    
     # ep_id still holds the strange slug from the API
     slug = ep_id            # the entire slug string
-    hls, sub = extract_episode_stream_and_subtitle(slug, ep_num)
+    try:
+        hls, sub = extract_episode_stream_and_subtitle(slug, ep_num)
+    except Exception as e:
+        logger.error("Scraper error for %s ep%s: %s", slug, ep_num, e)
+        return query.message.reply_text(
+            "⚠️ Sorry, I couldn’t fetch that episode. It may not exist or the page structure changed."
+        )
     if not hls:
         return query.message.reply_text("❌ Couldn't find a video stream for that episode.")
 
